@@ -248,8 +248,13 @@
   /* ------------------------------------------------------------- feed filter */
 
   function feedRoot() {
-    if (state.pageType === 'watch') return firstOf(document, SELECTORS.relatedRoots);
-    return firstOf(document, SELECTORS.feedRoots);
+    // YouTube keeps stale/empty copies of #secondary and #related around
+    // (miniplayer, previous page), so pick the first root that actually
+    // contains a video card rather than the first that matches.
+    const list = state.pageType === 'watch' ? SELECTORS.relatedRoots : SELECTORS.feedRoots;
+    const roots = allOf(document, list);
+    for (const r of roots) if (q(r, SELECTORS.card)) return r;
+    return roots[0] || null;
   }
 
   /**

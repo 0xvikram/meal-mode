@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Meal Mode</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="head">
+    <span class="logo" aria-hidden="true">&#127869;</span>
+    <h1>Meal Mode</h1>
+  </header>
+
+  <!-- Idle: pick a budget and start -->
+  <section id="idle" class="panel">
+    <label class="label" for="budget">Meal length</label>
+    <output id="budgetOut" class="big" for="budget">20 min</output>
+    <input id="budget" type="range" min="5" max="90" step="5" value="20">
+    <div class="scale"><span>5</span><span>90 min</span></div>
+    <button id="start" class="btn btn-primary btn-lg" type="button">Start meal</button>
+  </section>
+
+  <!-- Active: time left and controls -->
+  <section id="active" class="panel" hidden>
+    <span class="label">Time left</span>
+    <output id="remaining" class="big mono">0:00</output>
+    <div class="bar"><div id="barFill" class="bar-fill"></div></div>
+    <p id="nowPlaying" class="now"></p>
+    <div class="row">
+      <button id="plus1" class="btn" type="button">+1 min</button>
+      <button id="plus5" class="btn" type="button">+5 min</button>
+      <button id="done" class="btn btn-primary" type="button">Done</button>
+    </div>
+  </section>
+
+  <details id="settings" class="settings">
+    <summary>Settings</summary>
+    <div class="setting">
+      <label for="tolerance">Tolerance</label>
+      <input id="tolerance" type="number" min="0" max="900" step="10" value="120">
+      <span class="unit">sec</span>
+    </div>
+    <div class="setting">
+      <label for="pickerPct">Picker at</label>
+      <input id="pickerPct" type="number" min="50" max="100" step="5" value="90">
+      <span class="unit">% of video</span>
+    </div>
+    <div class="setting">
+      <label for="autoPick">Auto-pick after</label>
+      <input id="autoPick" type="number" min="0" max="60" step="1" value="8">
+      <span class="unit">sec</span>
+    </div>
+    <p id="settingsNote" class="note"></p>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>

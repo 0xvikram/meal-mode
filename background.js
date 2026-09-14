@@ -218,8 +218,10 @@ async function tickSession(msg) {
 function durationParam(effectiveMin) {
   if (!Number.isFinite(effectiveMin)) return '';
   if (effectiveMin < 4) return SP_UNDER_4_MIN;
-  if (effectiveMin <= 20) return SP_4_TO_20_MIN;
-  return ''; // over 20 min: no filter, our own feed filter does the work
+  // Up to 30 min: YouTube's 4-20 bucket is the best pool (everything fits).
+  // Beyond that no bucket helps, so let our own feed filter do the work.
+  if (effectiveMin <= 30) return SP_4_TO_20_MIN;
+  return '';
 }
 
 function buildSearchUrl(query, effectiveMin) {
@@ -266,7 +268,7 @@ async function findVideos(msg) {
   const query = queryForGenre(msg && msg.genre);
   if (!query) return { ok: false, url: null };
   const minutes = num(msg && msg.minutes, settings.defaultBudgetMin, 1, 600);
-  const url = buildSearchUrl(query, minutes + settings.toleranceSec / 60);
+  const url = buildSearchUrl(query, minutes);
   const tabId = await openSearch(url);
   return { ok: tabId != null, url, tabId };
 }

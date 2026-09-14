@@ -199,3 +199,73 @@ input[type="range"] {
   color: var(--muted);
   min-height: 14px;
 }
+
+/* ------------------------------------------------------------ genre picker */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: -2px 0 2px;
+}
+
+.chip {
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--fg);
+  font: 500 11px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip:hover { border-color: var(--fg); }
+
+.chip-on {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.free-text {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font: 400 12px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.free-text::placeholder { color: var(--muted); }
+.free-text:focus { outline: none; border-color: var(--fg); }
+
+/* --------------------------------------------------- active-session genre */
+
+.genre-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.genre-tag {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-sm {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  font-size: 11px;
+}

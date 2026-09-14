@@ -70,7 +70,14 @@
       '#items.ytd-watch-next-secondary-results-renderer'
     ],
     autonavToggle: '.ytp-autonav-toggle-button',
-    playerControls: '.ytp-chrome-bottom'
+    playerControls: '.ytp-chrome-bottom',
+    /* ---- results page: where the "Meal picks" strip is inserted ---- */
+    resultsAnchors: [
+      'ytd-two-column-search-results-renderer #primary',
+      'ytd-search #primary',
+      'ytd-two-column-search-results-renderer',
+      'ytd-search'
+    ]
   };
 
   const DEFAULT_SETTINGS = {
@@ -86,7 +93,8 @@
     watchedSec: 0,
     startedAt: null,
     lastVideoId: null,
-    lastTitle: null
+    lastTitle: null,
+    genre: null
   };
 
   const TICK_BATCH_SEC = 5;
@@ -117,6 +125,7 @@
     autonavTries: 0,
     autonavRestoreDone: false,
     pillEl: null,
+    stripEl: null,
     generation: 0
   };
 
@@ -276,6 +285,7 @@
 
   function applyFeedFilter() {
     if (!isFeedPage(state.pageType)) return;
+    updateStrip();
     const root = feedRoot();
     if (!root) return;
     if (!isActive()) {
@@ -349,7 +359,10 @@
     const pill = state.pillEl;
     if (!pill) return;
     const text = q(pill, '.mm-pill-text');
-    if (text) text.textContent = mmss(remaining()) + ' left';
+    if (text) {
+      const genre = state.session.genre;
+      text.textContent = (genre ? genre + ' \u00B7 ' : '') + mmss(remaining()) + ' left';
+    }
     pill.classList.toggle('mm-pill-over', remaining() <= 0);
   }
 
@@ -358,6 +371,46 @@
       state.pillEl.parentNode.removeChild(state.pillEl);
     }
     state.pillEl = null;
+  }
+
+  /* ---------------------------------------------- results page "picks" strip */
+
+  function removeStrip() {
+    if (state.stripEl && state.stripEl.parentNode) {
+      state.stripEl.parentNode.removeChild(state.stripEl);
+    }
+    state.stripEl = null;
+  }
+
+  function stripText() {
+    const genre = state.session.genre;
+    return 'Meal picks' + (genre ? ' for ' + genre : '') + ' \u00B7 fits ' + mmss(remaining());
+  }
+
+  /** Tells the user the results list they are looking at has been filtered. */
+  function updateStrip() {
+    if (state.pageType !== 'results' || !isActive()) { removeStrip(); return; }
+    if (state.stripEl && state.stripEl.isConnected) {
+      const label = q(state.stripEl, '.mm-strip-text');
+      if (label) label.textContent = stripText();
+      return;
+    }
+    removeStrip();
+    const anchor = firstOf(document, SELECTORS.resultsAnchors);
+    if (!anchor || typeof anchor.insertBefore !== 'function') return;
+
+    const strip = document.createElement('div');
+    strip.className = 'mm-strip';
+    const icon = document.createElement('span');
+    icon.className = 'mm-strip-icon';
+    icon.textContent = '\uD83C\uDF7D';
+    const label = document.createElement('span');
+    label.className = 'mm-strip-text';
+    label.textContent = stripText();
+    strip.appendChild(icon);
+    strip.appendChild(label);
+    anchor.insertBefore(strip, anchor.firstChild);
+    state.stripEl = strip;
   }
 
   /* ---------------------------------------------------------------- banner */
@@ -781,6 +834,7 @@
   function tick() {
     if (!isActive()) {
       updatePill();
+      removeStrip();
       hideBanner();
       closePicker();
       clearQueue();
@@ -823,6 +877,7 @@
       closePicker();
       clearQueue();
       removePill();
+      removeStrip();
       restoreAutonav();
       return;
     }
@@ -844,6 +899,7 @@
     clearQueue(); // a manual navigation cancels any queued top-up
     hideBanner();
     removePill();
+    removeStrip();
     clearFeedFilter(document);
     state.pendingSec = 0;
     state.pausedForBudget = false;

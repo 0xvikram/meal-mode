@@ -11,8 +11,13 @@
     <h1>Meal Mode</h1>
   </header>
 
-  <!-- Idle: pick a budget and start -->
+  <!-- Idle: pick a genre + a budget, then start -->
   <section id="idle" class="panel">
+    <span class="label" id="genreLabel">What do you feel like?</span>
+    <div id="chips" class="chips" role="group" aria-labelledby="genreLabel"></div>
+    <input id="freeText" class="free-text" type="text" placeholder="or type anything&#8230;"
+           autocomplete="off" spellcheck="false" maxlength="48">
+
     <label class="label" for="budget">Meal length</label>
     <output id="budgetOut" class="big" for="budget">20 min</output>
     <input id="budget" type="range" min="5" max="90" step="5" value="20">
@@ -25,6 +30,10 @@
     <span class="label">Time left</span>
     <output id="remaining" class="big mono">0:00</output>
     <div class="bar"><div id="barFill" class="bar-fill"></div></div>
+    <div class="genre-row">
+      <span id="genreLine" class="genre-tag" hidden></span>
+      <button id="findMore" class="btn btn-sm" type="button" hidden>Find more</button>
+    </div>
     <p id="nowPlaying" class="now"></p>
     <div class="row">
       <button id="plus1" class="btn" type="button">+1 min</button>

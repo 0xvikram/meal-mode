@@ -220,3 +220,23 @@
 .mm-btn-primary:hover {
   background: #fff;
 }
+
+/* -------------------------------------------- results page "meal picks" strip */
+
+.mm-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.12);
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  color: inherit;
+  font: 500 13px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.mm-strip-icon {
+  font-size: 14px;
+  line-height: 1;
+}

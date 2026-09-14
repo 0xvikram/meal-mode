@@ -240,12 +240,15 @@
   }
 
   function isFeedPage(type) {
-    return type === 'home' || type === 'results' || type === 'feed';
+    // 'watch' counts too: the related-videos sidebar is filtered like a feed
+    // so every list on screen matches the time left in the pill.
+    return type === 'home' || type === 'results' || type === 'feed' || type === 'watch';
   }
 
   /* ------------------------------------------------------------- feed filter */
 
   function feedRoot() {
+    if (state.pageType === 'watch') return firstOf(document, SELECTORS.relatedRoots);
     return firstOf(document, SELECTORS.feedRoots);
   }
 

@@ -17,6 +17,84 @@ const DEFAULT_SETTINGS = Object.freeze({
   recentGenres: []
 });
 
+/** Tokens that carry no topic signal and only dilute a search query. */
+const TITLE_NOISE = new Set([
+  'official', 'video', 'hd', '4k', 'full', 'episode', 'ep', 'part', 'ft',
+  'feat', 'lyrics', 'audio', 'trailer', 'new', 'latest', '2024', '2025', '2026'
+]);
+
+/** Best-effort emoji/symbol strip; unicode property escapes may be missing. */
+function stripSymbols(text) {
+  try {
+    return text.replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, ' ');
+  } catch (_) {
+    return text;
+  }
+}
+
+function stripPunctuation(text) {
+  try {
+    return text.replace(/[^\p{L}\p{N}\s']/gu, ' ');
+  } catch (_) {
+    return text.replace(/[^A-Za-z0-9\s']/g, ' ');
+  }
+}
+
+/**
+ * Turn a video title into a search query for "more like this".
+ * Pure: no DOM, no storage, no network.
+ */
+function queryFromTitle(title, author) {
+  const rawTitle = typeof title === 'string' ? title : '';
+  const rawAuthor = typeof author === 'string' ? author : '';
+
+  let text = rawTitle.toLowerCase();
+  text = text.replace(/\([^)]*\)/g, ' ')   // (...)
+    .replace(/\[[^\]]*\]/g, ' ')          // [...]
+    .replace(/\{[^}]*\}/g, ' ');           // {...}
+  text = text.replace(/#[^\s#]+/g, ' ');   // hashtags
+  text = stripSymbols(text);
+  text = text.replace(/[|\-:]+/g, ' ');
+  text = stripPunctuation(text);
+
+  const words = text.split(/\s+/).filter((w) => w && !TITLE_NOISE.has(w));
+  let picked = words.slice(0, 6);
+
+  if (picked.length < 2) {
+    // Too little left: lean on the channel plus the untouched title.
+    const original = rawTitle.split(/\s+/).filter(Boolean).slice(0, 3);
+    picked = (rawAuthor ? [rawAuthor] : []).concat(original);
+  }
+
+  const out = picked.join(' ').replace(/\s+/g, ' ').trim();
+  return out || rawAuthor.trim() || rawTitle.trim();
+}
+
+/** Short, human label for the pill: first 4 cleaned words, Title Case. */
+function labelFromTitle(title, author) {
+  const words = queryFromTitle(title, author).split(/\s+/).filter(Boolean).slice(0, 4);
+  const label = words
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+    .slice(0, 48);
+  return label || (typeof title === 'string' ? title.trim().slice(0, 48) : '');
+}
+
+/** videoId from watch?v=, youtu.be/ and /shorts/ URL forms. */
+function videoIdFromUrl(url) {
+  const raw = typeof url === 'string' ? url.trim() : '';
+  if (!raw) return null;
+  let m = raw.match(/youtu\.be\/([A-Za-z0-9_-]{6,20})/);
+  if (m) return m[1];
+  m = raw.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,20})/);
+  if (m) return m[1];
+  if (/youtube\.com\//.test(raw)) {
+    m = raw.match(/[?&]v=([A-Za-z0-9_-]{6,20})/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 /** Chip label -> a search query that actually returns watchable meal videos. */
 const GENRE_QUERIES = Object.freeze({
   'comedy': 'stand up comedy full set',
@@ -50,7 +128,10 @@ const EMPTY_SESSION = Object.freeze({
   startedAt: null,
   lastVideoId: null,
   lastTitle: null,
-  genre: null
+  genre: null,
+  query: null,
+  fromLink: false,
+  excludeVideoId: null
 });
 
 const YT_TAB_PATTERNS = ['*://www.youtube.com/*'];
@@ -132,7 +213,12 @@ async function readSession() {
     startedAt: merged.startedAt == null ? null : num(merged.startedAt, null, 0),
     lastVideoId: typeof merged.lastVideoId === 'string' ? merged.lastVideoId : null,
     lastTitle: typeof merged.lastTitle === 'string' ? merged.lastTitle : null,
-    genre: typeof merged.genre === 'string' && merged.genre ? merged.genre : null
+    genre: typeof merged.genre === 'string' && merged.genre ? merged.genre : null,
+    query: typeof merged.query === 'string' && merged.query ? merged.query : null,
+    fromLink: Boolean(merged.fromLink),
+    excludeVideoId: typeof merged.excludeVideoId === 'string' && merged.excludeVideoId
+      ? merged.excludeVideoId
+      : null
   };
 }
 
@@ -165,10 +251,15 @@ async function broadcast(session) {
   }));
 }
 
-async function startSession(budgetMin, genre) {
+async function startSession(msg) {
   const settings = await readSettings();
-  const minutes = num(budgetMin, settings.defaultBudgetMin, 1, 600);
-  const label = typeof genre === 'string' ? genre.trim().slice(0, 48) : '';
+  const minutes = num(msg && msg.budgetMin, settings.defaultBudgetMin, 1, 600);
+  // `label` is what the pill shows; it is deliberately distinct from the
+  // search query, which may be a longer phrase derived from a video title.
+  const raw = typeof (msg && msg.label) === 'string' && msg.label
+    ? msg.label
+    : (msg && msg.genre);
+  const label = typeof raw === 'string' ? raw.trim().slice(0, 48) : '';
   const session = {
     active: true,
     budgetSec: Math.round(minutes * 60),
@@ -176,7 +267,14 @@ async function startSession(budgetMin, genre) {
     startedAt: Date.now(),
     lastVideoId: null,
     lastTitle: null,
-    genre: label || null
+    genre: label || null,
+    query: typeof (msg && msg.query) === 'string' && msg.query
+      ? msg.query.trim().slice(0, 120)
+      : (label || null),
+    fromLink: Boolean(msg && msg.fromLink),
+    excludeVideoId: typeof (msg && msg.excludeVideoId) === 'string' && msg.excludeVideoId
+      ? msg.excludeVideoId
+      : null
   };
   return writeSession(session);
 }
@@ -263,12 +361,61 @@ async function openSearch(url) {
   }
 }
 
+/**
+ * Look a pasted link up through YouTube's public oembed endpoint. No API key,
+ * no third party - youtube.com only, which manifest host_permissions covers.
+ */
+async function resolveLink(msg) {
+  const videoId = videoIdFromUrl(msg && msg.url);
+  if (!videoId) return { ok: false, reason: 'not-a-youtube-link' };
+
+  const target = 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId);
+  const endpoint = 'https://www.youtube.com/oembed?url=' +
+    encodeURIComponent(target) + '&format=json';
+
+  let data = null;
+  try {
+    const res = await fetch(endpoint, { credentials: 'omit' });
+    if (!res || !res.ok) {
+      return { ok: false, videoId, reason: res ? 'http-' + res.status : 'no-response' };
+    }
+    data = await res.json();
+  } catch (_) {
+    return { ok: false, videoId, reason: 'fetch-failed' };
+  }
+
+  const title = data && typeof data.title === 'string' ? data.title : '';
+  const author = data && typeof data.author_name === 'string' ? data.author_name : '';
+  if (!title && !author) return { ok: false, videoId, reason: 'no-metadata' };
+
+  return {
+    ok: true,
+    videoId,
+    title,
+    author,
+    query: queryFromTitle(title, author),
+    label: labelFromTitle(title, author)
+  };
+}
+
 async function findVideos(msg) {
   const settings = await readSettings();
   const query = queryForGenre(msg && msg.genre);
   if (!query) return { ok: false, url: null };
   const minutes = num(msg && msg.minutes, settings.defaultBudgetMin, 1, 600);
-  const url = buildSearchUrl(query, minutes);
+  const url = buildSearchUrl(query, minutes); // bucket from the budget itself; the <=30 rule already absorbs tolerance
+
+  // Remember the source video so the feed filter can hide it from the results.
+  const exclude = typeof (msg && msg.excludeVideoId) === 'string' && msg.excludeVideoId
+    ? msg.excludeVideoId
+    : null;
+  if (exclude) {
+    const current = await readSession();
+    if (current.active && current.excludeVideoId !== exclude) {
+      await writeSession(Object.assign({}, current, { excludeVideoId: exclude }));
+    }
+  }
+
   const tabId = await openSearch(url);
   return { ok: tabId != null, url, tabId };
 }
@@ -277,7 +424,7 @@ async function handle(msg) {
   const type = msg && msg.type;
   switch (type) {
     case 'SESSION_START':
-      return { session: await startSession(msg.budgetMin, msg.genre), settings: await readSettings() };
+      return { session: await startSession(msg), settings: await readSettings() };
     case 'SESSION_STOP':
       return { session: await stopSession(), settings: await readSettings() };
     case 'SESSION_EXTEND':
@@ -290,6 +437,8 @@ async function handle(msg) {
       return { session: await readSession(), settings: await readSettings() };
     case 'SETTINGS_SET':
       return { session: await readSession(), settings: await writeSettings(msg.settings) };
+    case 'RESOLVE_LINK':
+      return await resolveLink(msg);
     case 'FIND_VIDEOS': {
       const found = await findVideos(msg);
       return Object.assign({ session: await readSession(), settings: await readSettings() }, found);

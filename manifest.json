@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Watch YouTube for exactly the length of your meal. Filters feeds to videos that fit and tops up the time that is left.",
   "permissions": ["storage", "tabs"],
+  "host_permissions": ["*://www.youtube.com/*"],
   "background": {
     "service_worker": "background.js"
   },

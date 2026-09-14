@@ -94,7 +94,9 @@
     startedAt: null,
     lastVideoId: null,
     lastTitle: null,
-    genre: null
+    genre: null,
+    fromLink: false,
+    excludeVideoId: null
   };
 
   const TICK_BATCH_SEC = 5;
@@ -308,7 +310,9 @@
     for (const card of cards) {
       if (!card || !card.el || !card.el.isConnected) continue;
       const el = outerCardEl(card.el);
-      const bad = card.isShort || card.isLive || card.isPlaylist ||
+      const excluded = Boolean(state.session.excludeVideoId) &&
+        card.videoId === state.session.excludeVideoId;
+      const bad = excluded || card.isShort || card.isLive || card.isPlaylist ||
         card.durationSec == null || !fitsDuration(card.durationSec);
       if (bad) hideCard(el); else unhideCard(el);
     }
@@ -384,7 +388,10 @@
 
   function stripText() {
     const genre = state.session.genre;
-    return 'Meal picks' + (genre ? ' for ' + genre : '') + ' \u00B7 fits ' + mmss(remaining());
+    const lead = state.session.fromLink && genre
+      ? 'Similar to ' + genre
+      : 'Meal picks' + (genre ? ' for ' + genre : '');
+    return lead + ' \u00B7 fits ' + mmss(remaining());
   }
 
   /** Tells the user the results list they are looking at has been filtered. */

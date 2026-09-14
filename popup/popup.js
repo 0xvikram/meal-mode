@@ -14,6 +14,8 @@
     idle: el('idle'),
     chips: el('chips'),
     freeText: el('freeText'),
+    linkInput: el('linkInput'),
+    linkNote: el('linkNote'),
     genreLine: el('genreLine'),
     findMore: el('findMore'),
     active: el('active'),
@@ -32,7 +34,10 @@
     settingsNote: el('settingsNote')
   };
 
-  let session = { active: false, budgetSec: 0, watchedSec: 0, lastTitle: null, genre: null };
+  let session = {
+    active: false, budgetSec: 0, watchedSec: 0, lastTitle: null,
+    genre: null, query: null, fromLink: false, excludeVideoId: null
+  };
   let settings = {
     defaultBudgetMin: 20, toleranceSec: 120, pickerAtPct: 0.9, autoPickSec: 8, recentGenres: []
   };
@@ -85,6 +90,27 @@
     return typed || selectedGenre || '';
   }
 
+  function linkValue() {
+    return ui.linkInput ? String(ui.linkInput.value || '').trim() : '';
+  }
+
+  /** Same three URL forms the service worker knows how to resolve. */
+  function looksLikeYouTubeLink(value) {
+    if (!value) return false;
+    return /youtu\.be\/[A-Za-z0-9_-]{6,}/.test(value) ||
+      /youtube\.com\/shorts\/[A-Za-z0-9_-]{6,}/.test(value) ||
+      (/youtube\.com\//.test(value) && /[?&]v=[A-Za-z0-9_-]{6,}/.test(value));
+  }
+
+  function note(text) {
+    if (ui.linkNote) ui.linkNote.textContent = text || '';
+  }
+
+  /** A link beats chips/text; otherwise fall back to the genre. */
+  function hasChoice() {
+    return Boolean(linkValue() || chosenGenre());
+  }
+
   function rememberGenre(genre) {
     const value = String(genre || '').trim();
     if (!value) return settings.recentGenres || [];
@@ -108,6 +134,8 @@
         // Single-select, and clicking the selected chip clears it.
         selectedGenre = on ? '' : genre;
         if (ui.freeText) ui.freeText.value = '';
+        if (ui.linkInput) ui.linkInput.value = '';
+        note('');
         renderChips();
         renderStartLabel();
       });
@@ -117,7 +145,7 @@
 
   function renderStartLabel() {
     if (!ui.start) return;
-    ui.start.textContent = chosenGenre() ? 'Find & start meal' : 'Start meal';
+    ui.start.textContent = hasChoice() ? 'Find & start meal' : 'Start meal';
   }
 
   function render() {
@@ -204,9 +232,29 @@
     });
   }
 
+  if (ui.linkInput) {
+    ui.linkInput.addEventListener('input', () => {
+      // A link is exclusive: it clears both the chips and the free text.
+      if (linkValue()) {
+        selectedGenre = '';
+        if (ui.freeText) ui.freeText.value = '';
+        renderChips();
+      }
+      note('');
+      renderStartLabel();
+    });
+    ui.linkInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && ui.start) ui.start.click();
+    });
+  }
+
   if (ui.freeText) {
     ui.freeText.addEventListener('input', () => {
-      if (ui.freeText.value.trim()) selectedGenre = ''; // typing clears the chips
+      if (ui.freeText.value.trim()) {
+        selectedGenre = ''; // typing clears the chips
+        if (ui.linkInput) ui.linkInput.value = ''; // ...and the link
+        note('');
+      }
       renderChips();
       renderStartLabel();
     });
@@ -215,9 +263,49 @@
     });
   }
 
+  /** Paste-a-link start: resolve the video, then search for more like it. */
+  async function startFromLink(budgetMin, url) {
+    note('Looking it up\u2026');
+    const info = await send({ type: 'RESOLVE_LINK', url });
+    if (!info || !info.ok) {
+      const reason = info && info.reason === 'not-a-youtube-link'
+        ? 'That does not look like a YouTube link.'
+        : 'Could not read that video. Check the link and try again.';
+      note(reason);
+      return;
+    }
+    apply(await send({
+      type: 'SESSION_START',
+      budgetMin,
+      label: info.label,
+      query: info.query,
+      fromLink: true,
+      excludeVideoId: info.videoId
+    }), false);
+    await send({ type: 'SETTINGS_SET', settings: { defaultBudgetMin: budgetMin } });
+    await send({
+      type: 'FIND_VIDEOS',
+      genre: info.query,
+      minutes: budgetMin,
+      excludeVideoId: info.videoId
+    });
+    window.close();
+  }
+
   if (ui.start) {
     ui.start.addEventListener('click', async () => {
       const budgetMin = Number(ui.budget && ui.budget.value) || settings.defaultBudgetMin;
+      const url = linkValue();
+
+      if (url) {
+        if (!looksLikeYouTubeLink(url)) {
+          note('That does not look like a YouTube link.');
+          return;
+        }
+        await startFromLink(budgetMin, url);
+        return;
+      }
+
       const genre = chosenGenre();
       apply(await send({ type: 'SESSION_START', budgetMin, genre }), false);
       await send({
@@ -233,10 +321,13 @@
 
   if (ui.findMore) {
     ui.findMore.addEventListener('click', async () => {
-      const genre = session.genre;
+      // Re-run the exact query the session was built from, not the short label.
+      const genre = session.query || session.genre;
       if (!genre) return;
       const minutes = Math.max(1, Math.round(remainingSec() / 60));
-      await send({ type: 'FIND_VIDEOS', genre, minutes });
+      await send({
+        type: 'FIND_VIDEOS', genre, minutes, excludeVideoId: session.excludeVideoId || undefined
+      });
       window.close();
     });
   }

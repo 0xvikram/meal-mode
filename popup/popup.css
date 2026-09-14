@@ -269,3 +269,6 @@ input[type="range"] {
   padding: 4px 9px;
   font-size: 11px;
 }
+
+/* The hidden attribute must beat .panel { display:flex } */
+[hidden] { display: none !important; }
